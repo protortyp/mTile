@@ -23,6 +23,12 @@ struct Rectangle: Equatable {
 
     var area: Double { width * height }
 
+    /// Returns true if this rectangle contains the given point.
+    func contains(_ point: CGPoint) -> Bool {
+        point.x >= x && point.x <= x + width &&
+        point.y >= y && point.y <= y + height
+    }
+
     /// Returns true if this rectangle fully contains the other rectangle.
     func contains(_ other: Rectangle) -> Bool {
         other.x >= x &&

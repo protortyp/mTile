@@ -19,7 +19,7 @@ final class DisplayService {
     /// Work areas are returned in Accessibility API coordinates (top-left origin).
     var monitors: [Screen] {
         NSScreen.screens.enumerated().map { (index, screen) in
-            let resolution = screenFrameInAXCoordinates(screen)
+            let resolution = DisplayService.screenFrameInAXCoordinates(screen)
             let workArea = visibleFrameInAXCoordinates(screen)
 
             return Screen(

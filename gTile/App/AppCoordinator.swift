@@ -208,9 +208,9 @@ final class AppCoordinator {
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil,
             queue: .main
-        ) { [weak self] notification in
-            // When focus changes and overlay is visible, reposition
-            // Could also close overlay if no window is focused
+        ) { [weak self] _ in
+            // When focus changes and overlay is visible, reposition overlays
+            _ = self
         }
 
         // Monitor for screen configuration changes

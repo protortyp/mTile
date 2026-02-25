@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import SwiftUI
 
 /// Events emitted by the overlay system.
 enum OverlayEvent {
@@ -138,7 +139,7 @@ final class OverlayController {
         destroyOverlays()
 
         let monitors = windowManager.monitors
-        for (index, monitor) in monitors.enumerated() {
+        for (index, _) in monitors.enumerated() {
             let state = OverlayState(monitorIndex: index)
             overlayStates.append(state)
 

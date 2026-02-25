@@ -27,7 +27,7 @@ final class TreeNode<T> {
 /// Provides a unified interface for desktop-related actions and window
 /// manipulation using the macOS Accessibility API.
 final class WindowManager {
-    private let accessibilityService: AccessibilityService
+    let accessibilityService: AccessibilityService
     private let displayService: DisplayService
     private let preferences: UserPreferences
 
@@ -180,7 +180,6 @@ final class WindowManager {
 
         // Get collision windows
         let allWindows = accessibilityService.allWindows()
-        let targetPID = accessibilityService.windowPID(target)
         var collisionWindows: [Rectangle] = []
 
         for (win, _) in allWindows {
@@ -306,7 +305,7 @@ final class WindowManager {
         }
 
         // Fit remaining windows in dynamic cells
-        var remaining = Array(windowList.dropFirst(mutableDedicated.count))
+        let remaining = Array(windowList.dropFirst(mutableDedicated.count))
         for i in 0..<dynamic.count {
             let mustFitAtLeastN = remaining.count / dynamic.count
             let mustTakeOverflow = i < (remaining.count % dynamic.count)
