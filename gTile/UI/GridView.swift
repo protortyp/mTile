@@ -1,16 +1,22 @@
 import SwiftUI
 
+/// Observable state for the grid, shared between GridView and OverlayController.
+/// Using a class avoids @State being reset when the view is recreated.
+final class GridInteractionState: ObservableObject {
+    @Published var anchor: GridOffset?
+}
+
 /// SwiftUI view that renders an interactive 2D tile grid.
 ///
-/// Supports click-anchor-then-click-target interaction for selecting
-/// a rectangular region of tiles, with hover preview.
+/// Selection modes:
+/// 1. Click a tile to set anchor, click another tile to complete selection
+/// 2. Click and drag from one tile to another
 struct GridView: View {
     let gridSize: GridSize
     @Binding var selection: GridSelection?
     @Binding var hoverTile: GridOffset?
     let onSelectionComplete: ((GridSelection) -> Void)?
-
-    @State private var anchor: GridOffset?
+    @ObservedObject var interactionState: GridInteractionState
 
     private let tileSpacing: CGFloat = 2
     private let tileCornerRadius: CGFloat = 3
@@ -30,10 +36,10 @@ struct GridView: View {
                     ForEach(0..<gridSize.cols, id: \.self) { col in
                         let offset = GridOffset(col: col, row: row)
                         let isSelected = isTileSelected(offset)
-                        let isHovered = isTileHovered(offset)
+                        let isInPreview = isTileInPreview(offset)
 
                         RoundedRectangle(cornerRadius: tileCornerRadius)
-                            .fill(tileColor(selected: isSelected, hovered: isHovered))
+                            .fill(tileColor(selected: isSelected, previewed: isInPreview))
                             .frame(width: tileWidth, height: tileHeight)
                             .offset(
                                 x: CGFloat(col) * (tileWidth + tileSpacing),
@@ -55,11 +61,11 @@ struct GridView: View {
         }
     }
 
-    private func tileColor(selected: Bool, hovered: Bool) -> Color {
+    private func tileColor(selected: Bool, previewed: Bool) -> Color {
         if selected {
             return Color.accentColor.opacity(0.7)
-        } else if hovered {
-            return Color.accentColor.opacity(0.3)
+        } else if previewed {
+            return Color.accentColor.opacity(0.35)
         } else {
             return Color.gray.opacity(0.3)
         }
@@ -76,12 +82,13 @@ struct GridView: View {
                offset.row >= minRow && offset.row <= maxRow
     }
 
-    private func isTileHovered(_ offset: GridOffset) -> Bool {
-        guard let anchor = anchor, let hover = hoverTile else {
+    /// Shows the hover preview range when an anchor is set.
+    private func isTileInPreview(_ offset: GridOffset) -> Bool {
+        guard let anchor = interactionState.anchor, let hover = hoverTile else {
+            // No anchor set - just highlight the single hovered tile
             return hoverTile == offset
         }
 
-        // When we have an anchor, show preview of the selection
         let minCol = min(anchor.col, hover.col)
         let maxCol = max(anchor.col, hover.col)
         let minRow = min(anchor.row, hover.row)
@@ -92,15 +99,15 @@ struct GridView: View {
     }
 
     private func handleTap(_ offset: GridOffset) {
-        if let currentAnchor = anchor {
+        if let currentAnchor = interactionState.anchor {
             // Second click: complete the selection
             let newSelection = GridSelection(anchor: currentAnchor, target: offset)
             selection = newSelection
-            anchor = nil
+            interactionState.anchor = nil
             onSelectionComplete?(newSelection)
         } else {
-            // First click: set anchor
-            anchor = offset
+            // First click: set anchor, show it highlighted
+            interactionState.anchor = offset
             selection = GridSelection(anchor: offset, target: offset)
         }
     }

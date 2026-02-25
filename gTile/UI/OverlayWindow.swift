@@ -2,10 +2,10 @@ import AppKit
 import SwiftUI
 
 /// NSPanel subclass that provides a non-activating, floating overlay window.
-///
-/// This is the macOS equivalent of GNOME's `LayoutManager.addChrome()` -
-/// a window that floats above all others without stealing focus.
 final class OverlayWindow: NSPanel {
+    /// Called when the user presses Escape.
+    var onEscape: (() -> Void)?
+
     init(contentRect: NSRect) {
         super.init(
             contentRect: contentRect,
@@ -14,7 +14,6 @@ final class OverlayWindow: NSPanel {
             defer: false
         )
 
-        // Configure as non-activating floating panel
         self.level = .floating
         self.isFloatingPanel = true
         self.hidesOnDeactivate = false
@@ -25,14 +24,23 @@ final class OverlayWindow: NSPanel {
         self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = true
-
-        // Don't show in Mission Control / Exposé
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
     }
 
-    // Allow interaction with the panel without activating the app
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 { // Escape
+            onEscape?()
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        onEscape?()
+    }
 }
 
 /// Creates and manages an overlay window with SwiftUI content.
@@ -52,7 +60,7 @@ final class OverlayWindowController {
     }
 
     func show() {
-        window.orderFrontRegardless()
+        window.makeKeyAndOrderFront(nil)
     }
 
     func hide() {
@@ -64,7 +72,6 @@ final class OverlayWindowController {
     }
 
     func placeAt(x: Double, y: Double) {
-        // Convert from AX coordinates (top-left) to NSWindow coordinates (bottom-left)
         let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
         let nsY = primaryHeight - y - Double(window.frame.height)
         window.setFrameOrigin(NSPoint(x: x, y: nsY))

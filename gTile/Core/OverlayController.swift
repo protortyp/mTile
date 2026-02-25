@@ -4,19 +4,14 @@ import SwiftUI
 
 /// Events emitted by the overlay system.
 enum OverlayEvent {
-    /// A grid selection was completed by the user.
     case selection(monitorIdx: Int, gridSize: GridSize, selection: GridSelection)
-    /// An autotile layout was requested from the overlay.
     case autotile(layout: AutoTileLayout)
-    /// Overlay visibility changed.
     case visibility(visible: Bool)
 }
 
 /// Responsible for rendering the gTile overlay on each connected monitor.
 ///
-/// Port of OverlayManager.ts. Keeps track of connected monitors and renders
-/// one overlay per screen. Keeps UIs in sync and provides a unified interface
-/// to manipulate overlay appearance.
+/// Port of OverlayManager.ts.
 final class OverlayController {
     private let windowManager: WindowManager
     private let preferences: UserPreferences
@@ -24,6 +19,7 @@ final class OverlayController {
 
     private var overlays: [OverlayWindowController] = []
     private var overlayStates: [OverlayState] = []
+    private var interactionStates: [GridInteractionState] = []
     private var callbacks: [(OverlayEvent) -> Void] = []
     private var syncInProgress = false
 
@@ -56,7 +52,6 @@ final class OverlayController {
         callbacks.append(callback)
     }
 
-    /// Toggles the visibility of the overlays.
     func toggleOverlays(hide: Bool? = nil) {
         let currentlyVisible = overlays.contains { $0.isVisible }
         let shouldHide = hide ?? currentlyVisible
@@ -64,24 +59,32 @@ final class OverlayController {
         if shouldHide {
             syncInProgress = true
             overlays.forEach { $0.hide() }
+            previewWindow.previewArea = nil
             syncInProgress = false
+            // Clear selections and anchors
+            for i in 0..<overlayStates.count {
+                overlayStates[i].selection = nil
+                overlayStates[i].hoverTile = nil
+            }
+            for state in interactionStates {
+                state.anchor = nil
+            }
             dispatch(.visibility(visible: false))
             return
         }
 
-        // Check pre-conditions for showing overlay
-        guard windowManager.focusedWindow != nil else { return }
         guard !overlays.isEmpty else { return }
 
         placeOverlays()
 
         syncInProgress = true
         overlays.forEach { $0.show() }
+        // Make the first overlay key so it receives keyboard events
+        overlays.first?.window.makeKey()
         syncInProgress = false
         dispatch(.visibility(visible: true))
     }
 
-    /// Sets the tile selection on the overlay for the specified monitor.
     func setSelection(_ selection: GridSelection?, monitorIdx: Int) {
         guard monitorIdx < overlayStates.count else { return }
         overlayStates[monitorIdx].selection = selection
@@ -99,25 +102,24 @@ final class OverlayController {
         refreshOverlay(at: monitorIdx)
     }
 
-    /// Returns the current tile selection for a monitor.
     func getSelection(_ monitorIdx: Int) -> GridSelection? {
         guard monitorIdx < overlayStates.count else { return nil }
         return overlayStates[monitorIdx].selection
     }
 
-    /// Cycles through grid size presets.
     func iteratePreset() {
         presetIndex = (presetIndex + 1) % presets.count
         gridSize = presets[presetIndex]
 
-        // Clear all selections and refresh
         for i in 0..<overlayStates.count {
             overlayStates[i].selection = nil
+        }
+        for state in interactionStates {
+            state.anchor = nil
         }
         refreshAllOverlays()
     }
 
-    /// Updates the list of grid size presets.
     func updatePresets(_ newPresets: [GridSize]) {
         presets = newPresets
         presetIndex = 0
@@ -140,14 +142,20 @@ final class OverlayController {
 
         let monitors = windowManager.monitors
         for (index, _) in monitors.enumerated() {
-            let state = OverlayState(monitorIndex: index)
-            overlayStates.append(state)
+            overlayStates.append(OverlayState(monitorIndex: index))
+            let interactionState = GridInteractionState()
+            interactionStates.append(interactionState)
 
-            let monitorIdx = index
             let controller = OverlayWindowController(
-                content: makeOverlayView(for: monitorIdx),
+                content: makeOverlayView(for: index, interactionState: interactionState),
                 frame: NSRect(x: 0, y: 0, width: 300, height: 280)
             )
+
+            // Wire Escape key
+            controller.window.onEscape = { [weak self] in
+                self?.toggleOverlays(hide: true)
+            }
+
             overlays.append(controller)
         }
     }
@@ -157,17 +165,17 @@ final class OverlayController {
         overlays.forEach { $0.hide() }
         overlays.removeAll()
         overlayStates.removeAll()
+        interactionStates.removeAll()
 
         if wasVisible {
             dispatch(.visibility(visible: false))
         }
     }
 
-    private func makeOverlayView(for monitorIdx: Int) -> OverlayView {
-        // Create bindings that reference this controller's state
+    private func makeOverlayView(for monitorIdx: Int, interactionState: GridInteractionState) -> OverlayView {
         let selectionBinding = Binding<GridSelection?>(
             get: { [weak self] in self?.overlayStates[safe: monitorIdx]?.selection },
-            set: { [weak self] newValue in
+            set: { [weak self] (newValue: GridSelection?) in
                 guard let self = self else { return }
                 if monitorIdx < self.overlayStates.count {
                     self.overlayStates[monitorIdx].selection = newValue
@@ -183,17 +191,19 @@ final class OverlayController {
 
         let hoverBinding = Binding<GridOffset?>(
             get: { [weak self] in self?.overlayStates[safe: monitorIdx]?.hoverTile },
-            set: { [weak self] newValue in
+            set: { [weak self] (newValue: GridOffset?) in
                 guard let self = self else { return }
                 if monitorIdx < self.overlayStates.count {
                     self.overlayStates[monitorIdx].hoverTile = newValue
                 }
                 if let tile = newValue {
-                    let hoverSelection = GridSelection(anchor: tile, target: tile)
+                    // If we have an anchor, show the range preview
+                    let previewAnchor = interactionState.anchor ?? tile
+                    let previewSel = GridSelection(anchor: previewAnchor, target: tile)
                     let area = self.windowManager.selectionToArea(
-                        hoverSelection, gridSize: self.gridSize, monitorIdx: monitorIdx, preview: true)
+                        previewSel, gridSize: self.gridSize, monitorIdx: monitorIdx, preview: true)
                     self.previewWindow.previewArea = area
-                } else {
+                } else if interactionState.anchor == nil {
                     self.previewWindow.previewArea = nil
                 }
             }
@@ -201,7 +211,7 @@ final class OverlayController {
 
         let gridSizeBinding = Binding<GridSize>(
             get: { [weak self] in self?.gridSize ?? DefaultGridSizes[0] },
-            set: { [weak self] newValue in
+            set: { [weak self] (newValue: GridSize) in
                 self?.gridSize = newValue
                 self?.refreshAllOverlays()
             }
@@ -217,6 +227,7 @@ final class OverlayController {
             gridSize: gridSizeBinding,
             selection: selectionBinding,
             hoverTile: hoverBinding,
+            interactionState: interactionState,
             onSelectionComplete: { [weak self] selection in
                 guard let self = self else { return }
                 self.dispatch(.selection(
@@ -227,6 +238,9 @@ final class OverlayController {
             },
             onAutotile: { [weak self] layout in
                 self?.dispatch(.autotile(layout: layout))
+            },
+            onClose: { [weak self] in
+                self?.toggleOverlays(hide: true)
             },
             onToggleAutoClose: { [weak self] in
                 self?.preferences.autoClose.toggle()
@@ -267,7 +281,6 @@ final class OverlayController {
                 }
             }
 
-            // Center on monitor
             let centerX = workArea.x + workArea.width / 2 - overlayWidth / 2
             let centerY = workArea.y + workArea.height / 2 - overlayHeight / 2
             overlay.placeAt(x: centerX, y: centerY)
@@ -275,8 +288,8 @@ final class OverlayController {
     }
 
     private func refreshOverlay(at index: Int) {
-        guard index < overlays.count else { return }
-        overlays[index].updateContent(makeOverlayView(for: index))
+        guard index < overlays.count, index < interactionStates.count else { return }
+        overlays[index].updateContent(makeOverlayView(for: index, interactionState: interactionStates[index]))
     }
 
     private func refreshAllOverlays() {

@@ -1,22 +1,19 @@
 import SwiftUI
 
 /// Main overlay view combining title bar, grid, preset bar, and action bar.
-///
-/// This is the SwiftUI equivalent of gTile's Overlay container, composed of
-/// TitleBar + Grid + PresetBar + ActionBar.
 struct OverlayView: View {
     let title: String
     let presets: [GridSize]
     @Binding var gridSize: GridSize
     @Binding var selection: GridSelection?
     @Binding var hoverTile: GridOffset?
+    @ObservedObject var interactionState: GridInteractionState
 
     let onSelectionComplete: ((GridSelection) -> Void)?
     let onAutotile: ((AutoTileLayout) -> Void)?
+    let onClose: (() -> Void)?
     let onToggleAutoClose: (() -> Void)?
     let onToggleFollowCursor: (() -> Void)?
-
-    @State private var presetIndex: Int = 0
 
     var body: some View {
         VStack(spacing: 8) {
@@ -28,7 +25,8 @@ struct OverlayView: View {
                 gridSize: gridSize,
                 selection: $selection,
                 hoverTile: $hoverTile,
-                onSelectionComplete: onSelectionComplete
+                onSelectionComplete: onSelectionComplete,
+                interactionState: interactionState
             )
             .frame(height: 150)
 
@@ -59,6 +57,16 @@ struct OverlayView: View {
             Text("\(gridSize.cols)x\(gridSize.rows)")
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(.tertiary)
+
+            Button {
+                onClose?()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Close (Esc)")
         }
     }
 
@@ -67,8 +75,8 @@ struct OverlayView: View {
             ForEach(Array(presets.enumerated()), id: \.offset) { index, preset in
                 Button {
                     gridSize = preset
-                    presetIndex = index
                     selection = nil
+                    interactionState.anchor = nil
                 } label: {
                     Text("\(preset.cols)x\(preset.rows)")
                         .font(.system(size: 10, design: .monospaced))
@@ -85,7 +93,6 @@ struct OverlayView: View {
 
     private var actionBar: some View {
         HStack(spacing: 8) {
-            // Autotile buttons
             Button {
                 onAutotile?(.main)
             } label: {
@@ -107,7 +114,6 @@ struct OverlayView: View {
 
             Spacer()
 
-            // Toggle buttons
             Button {
                 onToggleFollowCursor?()
             } label: {
@@ -120,11 +126,11 @@ struct OverlayView: View {
             Button {
                 onToggleAutoClose?()
             } label: {
-                Image(systemName: "xmark.circle")
+                Image(systemName: "arrow.down.right.and.arrow.up.left")
                     .font(.system(size: 12))
             }
             .buttonStyle(.borderless)
-            .help("Auto Close")
+            .help("Auto Close after placement")
         }
     }
 }
