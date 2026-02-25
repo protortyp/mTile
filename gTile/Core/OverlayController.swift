@@ -28,6 +28,10 @@ final class OverlayController {
     private(set) var gridSize: GridSize
     private var presetIndex: Int = 0
 
+    /// The window that was focused before the overlay was shown.
+    /// This is the actual target for window operations.
+    private(set) var targetWindow: AXUIElement?
+
     struct OverlayState {
         var selection: GridSelection?
         var hoverTile: GridOffset?
@@ -69,11 +73,15 @@ final class OverlayController {
             for state in interactionStates {
                 state.anchor = nil
             }
+            targetWindow = nil
             dispatch(.visibility(visible: false))
             return
         }
 
         guard !overlays.isEmpty else { return }
+
+        // Capture the focused window BEFORE showing overlay (which steals focus)
+        targetWindow = windowManager.focusedWindow
 
         placeOverlays()
 
