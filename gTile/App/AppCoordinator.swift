@@ -122,6 +122,11 @@ final class AppCoordinator {
         }
     }
 
+    /// Public entry point for triggering actions (used by MenuBarView).
+    func onAction(_ action: HotkeyAction) {
+        onUserAction(action)
+    }
+
     private func onUserAction(_ action: HotkeyAction) {
         // Trivial delegation events
         switch action {
