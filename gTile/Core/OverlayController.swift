@@ -110,8 +110,15 @@ final class OverlayController {
         targetWindow = windowManager.accessibilityService.focusedWindowExcludingSelf()
         if let tw = targetWindow {
             targetWindowPID = windowManager.accessibilityService.windowPID(tw)
+            let title = windowManager.accessibilityService.windowTitle(tw) ?? "<no title>"
+            print("gTile: captured targetWindow: '\(title)' PID=\(targetWindowPID)")
         } else {
             targetWindowPID = 0
+            print("gTile: WARNING - no target window captured!")
+            // Debug: what does frontmostApplication report?
+            if let app = NSWorkspace.shared.frontmostApplication {
+                print("gTile:   frontmostApp='\(app.localizedName ?? "?")' pid=\(app.processIdentifier) myPID=\(ProcessInfo.processInfo.processIdentifier)")
+            }
         }
 
         placeOverlays()
