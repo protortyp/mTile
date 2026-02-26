@@ -31,6 +31,8 @@ final class OverlayController {
     /// The window that was focused before the overlay was shown.
     /// This is the actual target for window operations.
     private(set) var targetWindow: AXUIElement?
+    /// PID of the target window's app, used for re-acquisition if AXUIElement becomes stale.
+    private(set) var targetWindowPID: pid_t = 0
 
     struct OverlayState {
         var selection: GridSelection?
@@ -48,6 +50,28 @@ final class OverlayController {
         self.gridSize = presets.first ?? DefaultGridSizes[0]
 
         renderOverlays()
+    }
+
+    /// Returns the target window, re-acquiring from the stored PID if the
+    /// original AXUIElement reference has become stale.
+    func validatedTargetWindow() -> AXUIElement? {
+        if let tw = targetWindow,
+           windowManager.accessibilityService.windowFrame(tw) != nil {
+            return tw
+        }
+
+        // Re-acquire from the same app
+        if targetWindowPID != 0 {
+            let appElement = AXUIElementCreateApplication(targetWindowPID)
+            var focusedWindow: AnyObject?
+            if AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow) == .success {
+                let reacquired = focusedWindow as! AXUIElement
+                targetWindow = reacquired
+                return reacquired
+            }
+        }
+
+        return nil
     }
 
     // MARK: - Public Interface
@@ -74,6 +98,7 @@ final class OverlayController {
                 state.anchor = nil
             }
             targetWindow = nil
+            targetWindowPID = 0
             dispatch(.visibility(visible: false))
             return
         }
@@ -83,6 +108,11 @@ final class OverlayController {
         // Capture the focused window BEFORE showing overlay (which steals focus).
         // Use focusedWindowExcludingSelf to avoid capturing our own overlay panel.
         targetWindow = windowManager.accessibilityService.focusedWindowExcludingSelf()
+        if let tw = targetWindow {
+            targetWindowPID = windowManager.accessibilityService.windowPID(tw)
+        } else {
+            targetWindowPID = 0
+        }
 
         placeOverlays()
 

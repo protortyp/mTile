@@ -76,6 +76,14 @@ final class AccessibilityService {
 
     /// Moves and resizes a window to the specified frame.
     func setWindowFrame(_ window: AXUIElement, frame: Rectangle) {
+        // Safety: never manipulate our own windows (overlay panels)
+        var pid: pid_t = 0
+        AXUIElementGetPid(window, &pid)
+        guard pid != ProcessInfo.processInfo.processIdentifier else {
+            print("gTile: BUG - attempted to resize own window (PID \(pid))")
+            return
+        }
+
         var position = CGPoint(x: frame.x, y: frame.y)
         var size = CGSize(width: frame.width, height: frame.height)
 
@@ -94,6 +102,11 @@ final class AccessibilityService {
 
     /// Moves a window to the specified position without resizing.
     func moveWindow(_ window: AXUIElement, to position: CGPoint) {
+        // Safety: never manipulate our own windows
+        var pid: pid_t = 0
+        AXUIElementGetPid(window, &pid)
+        guard pid != ProcessInfo.processInfo.processIdentifier else { return }
+
         var pos = position
         if let posValue = AXValueCreate(.cgPoint, &pos) {
             AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, posValue)

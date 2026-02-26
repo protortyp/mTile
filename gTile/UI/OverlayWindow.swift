@@ -60,7 +60,7 @@ final class OverlayWindowController {
     }
 
     func show() {
-        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
     }
 
     func hide() {

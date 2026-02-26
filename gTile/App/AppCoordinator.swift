@@ -147,8 +147,13 @@ final class AppCoordinator {
         let wm = windowManager
 
         // Use the target window captured before overlay was shown,
-        // falling back to the current focused window
-        guard let window = om.targetWindow ?? wm.accessibilityService.focusedWindowExcludingSelf() else { return }
+        // falling back to the current focused window.
+        // validatedTargetWindow() re-acquires from the app PID if the AXUIElement is stale.
+        guard let window = om.validatedTargetWindow() ?? wm.accessibilityService.focusedWindowExcludingSelf() else { return }
+
+        // Final safety check: never manipulate our own process windows
+        let windowPID = wm.accessibilityService.windowPID(window)
+        guard windowPID != ProcessInfo.processInfo.processIdentifier else { return }
         let monitorIdx = om.activeMonitorIndex ?? accessibilityService.windowMonitorIndex(window)
         let selection = om.getSelection(monitorIdx)
 
