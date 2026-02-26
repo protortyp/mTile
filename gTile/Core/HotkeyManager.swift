@@ -23,32 +23,26 @@ let settingKeyToKeyBindingGroup: [(key: String, group: KeyBindingGroup)] = [
     ("moveResizeEnabled", .action),
 ]
 
-/// A shortcut definition with modifiers and key code.
-struct ShortcutDefinition {
-    let name: String
-    let action: HotkeyAction
-    let group: KeyBindingGroup
-    let defaultModifiers: NSEvent.ModifierFlags
-    let defaultKeyCode: UInt16?
-    let defaultKeyChar: String?
-}
-
 /// Manages global keyboard shortcuts for the application.
 ///
-/// Uses Carbon event taps for global hotkeys (since KeyboardShortcuts
-/// provides a nice settings UI but we need the core event monitoring).
+/// Uses a combination of Carbon hot keys (for true global shortcuts that work
+/// even when the app is not focused) and NSEvent monitors.
 final class HotkeyManager {
     private var callbacks: [(HotkeyAction) -> Void] = []
     private var activeGroups: KeyBindingGroup = .global
     private var monitors: [Any] = []
     private let preferences: UserPreferences
 
-    // Registered shortcuts with their current state
     private var registeredShortcuts: [String: (action: HotkeyAction, group: KeyBindingGroup)] = [:]
+
+    // Carbon hot key for the global toggle (works even when app is not focused)
+    private var hotKeyRef: EventHotKeyRef?
+    private var eventHandlerRef: EventHandlerRef?
 
     init(preferences: UserPreferences) {
         self.preferences = preferences
         registerAllShortcuts()
+        installCarbonHotKey()
         setupEventMonitor()
     }
 
@@ -56,14 +50,13 @@ final class HotkeyManager {
         for monitor in monitors {
             NSEvent.removeMonitor(monitor)
         }
+        uninstallCarbonHotKey()
     }
 
-    /// Subscribe to hotkey actions.
     func subscribe(_ callback: @escaping (HotkeyAction) -> Void) {
         callbacks.append(callback)
     }
 
-    /// Sets which keybinding groups are actively listened for.
     func setListeningGroups(_ groups: KeyBindingGroup) {
         activeGroups = groups.union(.global)
     }
@@ -77,10 +70,10 @@ final class HotkeyManager {
     }
 
     private func registerAllShortcuts() {
-        // Global shortcuts
+        // Global
         register("showToggleTiling", action: .toggle, group: .global)
 
-        // Overlay shortcuts
+        // Overlay
         register("cancelTiling", action: .cancel, group: .overlay)
         register("changeGridSize", action: .loopGridSize, group: .overlay)
         register("moveUp", action: .pan(.north), group: .overlay)
@@ -99,14 +92,14 @@ final class HotkeyManager {
         register("setTiling", action: .confirm, group: .overlay)
         register("snapToNeighbors", action: .grow, group: .overlay)
 
-        // Autotile shortcuts
+        // Autotile
         register("autotileMain", action: .autotile(.main), group: .autotile)
         register("autotileMainInverted", action: .autotile(.mainInverted), group: .autotile)
         for i in 1...10 {
             register("autotile\(i)", action: .autotile(.cols(i)), group: .autotile)
         }
 
-        // Action shortcuts (direct window manipulation)
+        // Action
         register("actionAutotileMain", action: .autotile(.main), group: .action)
         register("actionAutotileMainInverted", action: .autotile(.mainInverted), group: .action)
         register("actionChangeTiling", action: .loopGridSize, group: .action)
@@ -124,7 +117,7 @@ final class HotkeyManager {
         register("actionMoveLeft", action: .move(.west), group: .action)
         register("actionMoveNextMonitor", action: .relocate, group: .action)
 
-        // Preset shortcuts
+        // Preset
         for i in 1...30 {
             register("presetResize\(i)", action: .loopPreset(i), group: .preset)
         }
@@ -134,8 +127,65 @@ final class HotkeyManager {
         registeredShortcuts[name] = (action, group)
     }
 
+    // MARK: - Carbon Hot Key (truly global, works when app is not focused)
+
+    private func installCarbonHotKey() {
+        // Register Cmd+Option+G as the global toggle shortcut
+        // keyCode 5 = G on US keyboard
+        let modifiers: UInt32 = UInt32(cmdKey | optionKey)
+        let keyCode: UInt32 = 5 // G
+
+        var hotKeyID = EventHotKeyID()
+        hotKeyID.signature = OSType(0x6754696C) // "gTil"
+        hotKeyID.id = 1
+
+        var eventType = EventTypeSpec()
+        eventType.eventClass = OSType(kEventClassKeyboard)
+        eventType.eventKind = UInt32(kEventHotKeyPressed)
+
+        // Install handler - use a C function pointer via closure context
+        let handler: EventHandlerUPP = { _, event, userData -> OSStatus in
+            guard let userData = userData else { return OSStatus(eventNotHandledErr) }
+            let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
+            manager.dispatch(.toggle)
+            return noErr
+        }
+
+        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+        InstallEventHandler(
+            GetApplicationEventTarget(),
+            handler,
+            1,
+            &eventType,
+            selfPtr,
+            &eventHandlerRef
+        )
+
+        RegisterEventHotKey(
+            keyCode,
+            modifiers,
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+    }
+
+    private func uninstallCarbonHotKey() {
+        if let hotKeyRef = hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            self.hotKeyRef = nil
+        }
+        if let eventHandlerRef = eventHandlerRef {
+            RemoveEventHandler(eventHandlerRef)
+            self.eventHandlerRef = nil
+        }
+    }
+
+    // MARK: - NSEvent Monitor (for local events when overlay is showing)
+
     private func setupEventMonitor() {
-        // Monitor global key events
+        // Global monitor for when other apps have focus
         let globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.handleKeyEvent(event)
         }
@@ -143,10 +193,10 @@ final class HotkeyManager {
             monitors.append(globalMonitor)
         }
 
-        // Monitor local key events (when our window is key)
+        // Local monitor for when our panel has focus
         let localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if self?.handleKeyEvent(event) == true {
-                return nil // Consume the event
+                return nil
             }
             return event
         }
@@ -155,19 +205,22 @@ final class HotkeyManager {
         }
     }
 
+    /// The modifier flags we care about (ignore caps lock, fn, etc.)
+    private static let significantModifiers: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
+
     @discardableResult
     private func handleKeyEvent(_ event: NSEvent) -> Bool {
-        // Look up the shortcut by saved user preferences
-        // For now, we use a simple modifier+key matching approach
-        // The KeyboardShortcuts package will handle the settings UI
+        let eventMods = event.modifierFlags.intersection(Self.significantModifiers)
 
         for (name, shortcut) in registeredShortcuts {
+            // Skip the global toggle - handled by Carbon hot key
+            if name == "showToggleTiling" { continue }
+
             guard activeGroups.contains(shortcut.group) else { continue }
 
-            // Check against saved shortcut for this name
-            if let savedShortcut = loadShortcut(name: name) {
-                if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == savedShortcut.modifiers &&
-                   event.keyCode == savedShortcut.keyCode {
+            if let saved = loadShortcut(name: name) {
+                let savedMods = saved.modifiers.intersection(Self.significantModifiers)
+                if eventMods == savedMods && event.keyCode == saved.keyCode {
                     dispatch(shortcut.action)
                     return true
                 }
@@ -177,7 +230,6 @@ final class HotkeyManager {
         return false
     }
 
-    /// Loads a saved shortcut from UserDefaults.
     private func loadShortcut(name: String) -> (modifiers: NSEvent.ModifierFlags, keyCode: UInt16)? {
         let key = "shortcut-\(name)"
         guard let data = UserDefaults.standard.data(forKey: key),
@@ -187,7 +239,6 @@ final class HotkeyManager {
         return (NSEvent.ModifierFlags(rawValue: UInt(decoded.modifiers)), decoded.keyCode)
     }
 
-    /// Saves a shortcut to UserDefaults.
     func saveShortcut(name: String, modifiers: NSEvent.ModifierFlags, keyCode: UInt16) {
         let saved = SavedShortcut(modifiers: Int(modifiers.rawValue), keyCode: keyCode)
         if let data = try? JSONEncoder().encode(saved) {
@@ -195,21 +246,13 @@ final class HotkeyManager {
         }
     }
 
-    /// Returns the default shortcut for a given name, or nil if no default.
     private func defaultShortcut(name: String) -> (modifiers: NSEvent.ModifierFlags, keyCode: UInt16)? {
-        // Default: Super+Enter to toggle tiling
-        // Users will configure their own shortcuts through the settings UI
-        switch name {
-        case "showToggleTiling":
-            // Cmd+Option+G (keyCode 5 = G)
-            return (.init([.command, .option]), 5)
-        default:
-            return nil
-        }
+        // Only the toggle shortcut has a default - others are configured via settings
+        // The toggle is handled by Carbon hot key, so no NSEvent default needed
+        nil
     }
 }
 
-/// Codable shortcut for UserDefaults persistence.
 private struct SavedShortcut: Codable {
     let modifiers: Int
     let keyCode: UInt16
