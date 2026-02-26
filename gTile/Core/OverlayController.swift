@@ -80,8 +80,9 @@ final class OverlayController {
 
         guard !overlays.isEmpty else { return }
 
-        // Capture the focused window BEFORE showing overlay (which steals focus)
-        targetWindow = windowManager.focusedWindow
+        // Capture the focused window BEFORE showing overlay (which steals focus).
+        // Use focusedWindowExcludingSelf to avoid capturing our own overlay panel.
+        targetWindow = windowManager.accessibilityService.focusedWindowExcludingSelf()
 
         placeOverlays()
 

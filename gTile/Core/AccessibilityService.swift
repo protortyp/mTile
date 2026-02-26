@@ -31,6 +31,34 @@ final class AccessibilityService {
         return (focusedWindow as! AXUIElement)
     }
 
+    /// Returns the focused window of an external app, ignoring our own process.
+    /// Uses NSWorkspace.frontmostApplication which is more reliable during
+    /// Carbon hotkey callbacks than the AX system-wide focused app query.
+    func focusedWindowExcludingSelf() -> AXUIElement? {
+        let myPID = ProcessInfo.processInfo.processIdentifier
+
+        // First try the frontmost application (most reliable)
+        if let frontmost = NSWorkspace.shared.frontmostApplication,
+           frontmost.processIdentifier != myPID {
+            let appElement = AXUIElementCreateApplication(frontmost.processIdentifier)
+            var focusedWindow: AnyObject?
+            if AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow) == .success {
+                return (focusedWindow as! AXUIElement)
+            }
+        }
+
+        // Fallback: use AX system-wide but skip our own PID
+        if let window = focusedWindow() {
+            var pid: pid_t = 0
+            AXUIElementGetPid(window, &pid)
+            if pid != myPID {
+                return window
+            }
+        }
+
+        return nil
+    }
+
     /// Returns the frame rectangle of a window (in screen coordinates, top-left origin).
     func windowFrame(_ window: AXUIElement) -> Rectangle? {
         guard let position = getPosition(window),

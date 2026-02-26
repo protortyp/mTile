@@ -148,7 +148,7 @@ final class AppCoordinator {
 
         // Use the target window captured before overlay was shown,
         // falling back to the current focused window
-        guard let window = om.targetWindow ?? wm.focusedWindow else { return }
+        guard let window = om.targetWindow ?? wm.accessibilityService.focusedWindowExcludingSelf() else { return }
         let monitorIdx = om.activeMonitorIndex ?? accessibilityService.windowMonitorIndex(window)
         let selection = om.getSelection(monitorIdx)
 
