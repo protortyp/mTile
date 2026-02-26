@@ -173,9 +173,7 @@ final class AppCoordinator {
             if let selection = selection {
                 wm.applySelection(window, monitorIdx: monitorIdx, gridSize: om.gridSize, selection: selection)
                 om.setSelection(nil, monitorIdx: monitorIdx)
-                if preferences.autoClose {
-                    om.toggleOverlays(hide: true)
-                }
+                om.toggleOverlays(hide: true)
             }
 
         case .pan(let dir):

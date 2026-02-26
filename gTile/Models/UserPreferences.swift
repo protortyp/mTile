@@ -147,7 +147,7 @@ final class UserPreferences {
 
         // Register defaults
         let defaultValues: [String: Any] = [
-            "autoClose": false,
+            "autoClose": true,
             "autoMaximize": false,
             "followCursor": false,
             "globalAutoTiling": false,
