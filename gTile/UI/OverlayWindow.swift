@@ -24,6 +24,7 @@ final class OverlayWindow: NSPanel {
         self.backgroundColor = .clear
         self.isOpaque = false
         self.hasShadow = true
+        self.acceptsMouseMovedEvents = true
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
     }
 

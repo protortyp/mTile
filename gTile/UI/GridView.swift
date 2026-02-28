@@ -36,35 +36,21 @@ struct GridView: View {
                             RoundedRectangle(cornerRadius: tileCornerRadius)
                                 .fill(colorForState(state))
                                 .frame(width: tileWidth, height: tileHeight)
+                                .onHover { hovering in
+                                    if hovering {
+                                        hoverTile = offset
+                                    } else if hoverTile == offset {
+                                        hoverTile = nil
+                                    }
+                                }
+                                .onTapGesture {
+                                    handleTap(offset)
+                                }
                         }
                     }
                 }
             }
-            .contentShape(SwiftUI.Rectangle())
-            .onContinuousHover { phase in
-                switch phase {
-                case .active(let location):
-                    hoverTile = hitTest(location, tileWidth: tileWidth, tileHeight: tileHeight)
-                case .ended:
-                    hoverTile = nil
-                }
-            }
-            .onTapGesture { location in
-                if let offset = hitTest(location, tileWidth: tileWidth, tileHeight: tileHeight) {
-                    handleTap(offset)
-                }
-            }
         }
-    }
-
-    /// Convert a point in the grid to a GridOffset.
-    private func hitTest(_ point: CGPoint, tileWidth: CGFloat, tileHeight: CGFloat) -> GridOffset? {
-        let col = Int(point.x / (tileWidth + tileSpacing))
-        let row = Int(point.y / (tileHeight + tileSpacing))
-        guard col >= 0 && col < gridSize.cols && row >= 0 && row < gridSize.rows else {
-            return nil
-        }
-        return GridOffset(col: col, row: row)
     }
 
     private enum TileState {
