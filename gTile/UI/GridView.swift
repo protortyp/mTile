@@ -6,6 +6,13 @@ import AppKit
 final class GridInteractionState: ObservableObject {
     @Published var anchor: GridOffset?
     @Published var hoverTile: GridOffset?
+    /// Keyboard-driven cursor position. Takes priority over hoverTile for highlighting.
+    @Published var keyboardCursor: GridOffset?
+
+    /// The active cursor: keyboard takes priority over mouse hover.
+    var activeCursor: GridOffset? {
+        keyboardCursor ?? hoverTile
+    }
 }
 
 /// SwiftUI view that renders an interactive 2D tile grid.
@@ -61,12 +68,13 @@ struct GridView: View {
         if let selection = selection, isInRange(offset, from: selection.anchor, to: selection.target) {
             return .selected
         }
-        if let anchor = interactionState.anchor, let hover = interactionState.hoverTile {
-            if isInRange(offset, from: anchor, to: hover) {
+        let cursor = interactionState.activeCursor
+        if let anchor = interactionState.anchor, let cur = cursor {
+            if isInRange(offset, from: anchor, to: cur) {
                 return .previewed
             }
         }
-        if interactionState.anchor == nil && interactionState.hoverTile == offset {
+        if interactionState.anchor == nil && cursor == offset {
             return .hovered
         }
         return .normal

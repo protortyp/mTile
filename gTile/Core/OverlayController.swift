@@ -96,6 +96,7 @@ final class OverlayController {
             }
             for state in interactionStates {
                 state.anchor = nil
+                state.keyboardCursor = nil
             }
             targetWindow = nil
             targetWindowPID = 0
@@ -122,6 +123,11 @@ final class OverlayController {
         }
 
         placeOverlays()
+
+        // Initialize keyboard cursor at top-left
+        for state in interactionStates {
+            state.keyboardCursor = GridOffset(col: 0, row: 0)
+        }
 
         syncInProgress = true
         overlays.forEach { $0.show() }
@@ -200,6 +206,48 @@ final class OverlayController {
             // Wire Escape key
             controller.window.onEscape = { [weak self] in
                 self?.toggleOverlays(hide: true)
+            }
+
+            // Wire arrow keys for keyboard navigation
+            controller.window.onArrowKey = { [weak self, weak interactionState] direction in
+                guard let self = self, let state = interactionState else { return }
+                let cur = state.keyboardCursor ?? GridOffset(col: 0, row: 0)
+                var newCol = cur.col, newRow = cur.row
+                switch direction {
+                case 0: newCol = max(0, cur.col - 1)                    // Left
+                case 1: newCol = min(self.gridSize.cols - 1, cur.col + 1) // Right
+                case 2: newRow = min(self.gridSize.rows - 1, cur.row + 1) // Down
+                case 3: newRow = max(0, cur.row - 1)                    // Up
+                default: break
+                }
+                let newOffset = GridOffset(col: newCol, row: newRow)
+                state.keyboardCursor = newOffset
+                // Update preview window
+                let previewAnchor = state.anchor ?? newOffset
+                let previewSel = GridSelection(anchor: previewAnchor, target: newOffset)
+                let area = self.windowManager.selectionToArea(
+                    previewSel, gridSize: self.gridSize, monitorIdx: index, preview: true)
+                self.previewWindow.previewArea = area
+            }
+
+            // Wire Enter key — same as clicking the current keyboard cursor
+            controller.window.onEnter = { [weak self, weak interactionState] in
+                guard let self = self, let state = interactionState else { return }
+                let cursor = state.keyboardCursor ?? GridOffset(col: 0, row: 0)
+                if let currentAnchor = state.anchor {
+                    // Second Enter: confirm selection
+                    let selection = GridSelection(anchor: currentAnchor, target: cursor)
+                    state.anchor = nil
+                    state.keyboardCursor = nil
+                    self.dispatch(.selection(
+                        monitorIdx: index,
+                        gridSize: self.gridSize,
+                        selection: selection
+                    ))
+                } else {
+                    // First Enter: set anchor
+                    state.anchor = cursor
+                }
             }
 
             overlays.append(controller)
