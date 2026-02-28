@@ -6,10 +6,10 @@ struct OverlayView: View {
     let presets: [GridSize]
     @Binding var gridSize: GridSize
     @Binding var selection: GridSelection?
-    @Binding var hoverTile: GridOffset?
     @ObservedObject var interactionState: GridInteractionState
 
     let onSelectionComplete: ((GridSelection) -> Void)?
+    var onHoverChanged: ((GridOffset?) -> Void)?
     let onAutotile: ((AutoTileLayout) -> Void)?
     let onClose: (() -> Void)?
     let onToggleAutoClose: (() -> Void)?
@@ -24,7 +24,7 @@ struct OverlayView: View {
             GridView(
                 gridSize: gridSize,
                 selection: $selection,
-                hoverTile: $hoverTile,
+                onHoverChanged: onHoverChanged,
                 onSelectionComplete: onSelectionComplete,
                 interactionState: interactionState
             )

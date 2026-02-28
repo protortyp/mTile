@@ -4,6 +4,7 @@ import SwiftUI
 /// Using a class avoids @State being reset when the view is recreated.
 final class GridInteractionState: ObservableObject {
     @Published var anchor: GridOffset?
+    @Published var hoverTile: GridOffset?
 }
 
 /// SwiftUI view that renders an interactive 2D tile grid.
@@ -14,7 +15,8 @@ final class GridInteractionState: ObservableObject {
 struct GridView: View {
     let gridSize: GridSize
     @Binding var selection: GridSelection?
-    @Binding var hoverTile: GridOffset?
+    /// Called when hover changes, so the parent can update the preview window.
+    var onHoverChanged: ((GridOffset?) -> Void)?
     let onSelectionComplete: ((GridSelection) -> Void)?
     @ObservedObject var interactionState: GridInteractionState
 
@@ -38,9 +40,11 @@ struct GridView: View {
                                 .frame(width: tileWidth, height: tileHeight)
                                 .onHover { hovering in
                                     if hovering {
-                                        hoverTile = offset
-                                    } else if hoverTile == offset {
-                                        hoverTile = nil
+                                        interactionState.hoverTile = offset
+                                        onHoverChanged?(offset)
+                                    } else if interactionState.hoverTile == offset {
+                                        interactionState.hoverTile = nil
+                                        onHoverChanged?(nil)
                                     }
                                 }
                                 .onTapGesture {
@@ -66,13 +70,13 @@ struct GridView: View {
             return .selected
         }
         // Check hover preview (anchor set, mouse hovering)
-        if let anchor = interactionState.anchor, let hover = hoverTile {
+        if let anchor = interactionState.anchor, let hover = interactionState.hoverTile {
             if isInRange(offset, from: anchor, to: hover) {
                 return .previewed
             }
         }
         // Single tile hover when no anchor
-        if interactionState.anchor == nil && hoverTile == offset {
+        if interactionState.anchor == nil && interactionState.hoverTile == offset {
             return .hovered
         }
         return .normal

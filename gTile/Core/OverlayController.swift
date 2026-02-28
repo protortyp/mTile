@@ -36,7 +36,7 @@ final class OverlayController {
 
     struct OverlayState {
         var selection: GridSelection?
-        var hoverTile: GridOffset?
+        // hoverTile is now tracked in GridInteractionState (@Published)
         var monitorIndex: Int
     }
 
@@ -92,7 +92,7 @@ final class OverlayController {
             // Clear selections and anchors
             for i in 0..<overlayStates.count {
                 overlayStates[i].selection = nil
-                overlayStates[i].hoverTile = nil
+                interactionStates[safe: i]?.hoverTile = nil
             }
             for state in interactionStates {
                 state.anchor = nil
@@ -235,26 +235,6 @@ final class OverlayController {
             }
         )
 
-        let hoverBinding = Binding<GridOffset?>(
-            get: { [weak self] in self?.overlayStates[safe: monitorIdx]?.hoverTile },
-            set: { [weak self] (newValue: GridOffset?) in
-                guard let self = self else { return }
-                if monitorIdx < self.overlayStates.count {
-                    self.overlayStates[monitorIdx].hoverTile = newValue
-                }
-                if let tile = newValue {
-                    // If we have an anchor, show the range preview
-                    let previewAnchor = interactionState.anchor ?? tile
-                    let previewSel = GridSelection(anchor: previewAnchor, target: tile)
-                    let area = self.windowManager.selectionToArea(
-                        previewSel, gridSize: self.gridSize, monitorIdx: monitorIdx, preview: true)
-                    self.previewWindow.previewArea = area
-                } else if interactionState.anchor == nil {
-                    self.previewWindow.previewArea = nil
-                }
-            }
-        )
-
         let gridSizeBinding = Binding<GridSize>(
             get: { [weak self] in self?.gridSize ?? DefaultGridSizes[0] },
             set: { [weak self] (newValue: GridSize) in
@@ -272,7 +252,6 @@ final class OverlayController {
             presets: presets,
             gridSize: gridSizeBinding,
             selection: selectionBinding,
-            hoverTile: hoverBinding,
             interactionState: interactionState,
             onSelectionComplete: { [weak self] selection in
                 guard let self = self else { return }
@@ -281,6 +260,18 @@ final class OverlayController {
                     gridSize: self.gridSize,
                     selection: selection
                 ))
+            },
+            onHoverChanged: { [weak self] tile in
+                guard let self = self else { return }
+                if let tile = tile {
+                    let previewAnchor = interactionState.anchor ?? tile
+                    let previewSel = GridSelection(anchor: previewAnchor, target: tile)
+                    let area = self.windowManager.selectionToArea(
+                        previewSel, gridSize: self.gridSize, monitorIdx: monitorIdx, preview: true)
+                    self.previewWindow.previewArea = area
+                } else if interactionState.anchor == nil {
+                    self.previewWindow.previewArea = nil
+                }
             },
             onAutotile: { [weak self] layout in
                 self?.dispatch(.autotile(layout: layout))
