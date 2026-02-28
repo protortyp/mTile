@@ -26,24 +26,20 @@ struct GridView: View {
             let tileWidth = (geometry.size.width - tileSpacing * CGFloat(gridSize.cols - 1)) / CGFloat(gridSize.cols)
             let tileHeight = (geometry.size.height - tileSpacing * CGFloat(gridSize.rows - 1)) / CGFloat(gridSize.rows)
 
-            ZStack(alignment: .topLeading) {
-                // Grid tiles
+            VStack(spacing: tileSpacing) {
                 ForEach(0..<gridSize.rows, id: \.self) { row in
-                    ForEach(0..<gridSize.cols, id: \.self) { col in
-                        let offset = GridOffset(col: col, row: row)
-                        let state = tileState(offset)
+                    HStack(spacing: tileSpacing) {
+                        ForEach(0..<gridSize.cols, id: \.self) { col in
+                            let offset = GridOffset(col: col, row: row)
+                            let state = tileState(offset)
 
-                        RoundedRectangle(cornerRadius: tileCornerRadius)
-                            .fill(colorForState(state))
-                            .frame(width: tileWidth, height: tileHeight)
-                            .offset(
-                                x: CGFloat(col) * (tileWidth + tileSpacing),
-                                y: CGFloat(row) * (tileHeight + tileSpacing)
-                            )
+                            RoundedRectangle(cornerRadius: tileCornerRadius)
+                                .fill(colorForState(state))
+                                .frame(width: tileWidth, height: tileHeight)
+                        }
                     }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(SwiftUI.Rectangle())
             .onContinuousHover { phase in
                 switch phase {
