@@ -209,22 +209,52 @@ final class OverlayController {
             }
 
             // Wire arrow keys for keyboard navigation
-            controller.window.onArrowKey = { [weak self, weak interactionState] direction in
+            controller.window.onArrowKey = { [weak self, weak interactionState] direction, optionHeld in
                 guard let self = self, let state = interactionState else { return }
-                let cur = state.keyboardCursor ?? GridOffset(col: 0, row: 0)
-                var newCol = cur.col, newRow = cur.row
-                switch direction {
-                case 0: newCol = max(0, cur.col - 1)                    // Left
-                case 1: newCol = min(self.gridSize.cols - 1, cur.col + 1) // Right
-                case 2: newRow = min(self.gridSize.rows - 1, cur.row + 1) // Down
-                case 3: newRow = max(0, cur.row - 1)                    // Up
-                default: break
+                let maxCol = self.gridSize.cols - 1
+                let maxRow = self.gridSize.rows - 1
+
+                if optionHeld, let anchor = state.anchor {
+                    // Option+Arrow: shift the entire selection (anchor + cursor),
+                    // clamping each side independently so it shrinks at borders.
+                    let cur = state.keyboardCursor ?? anchor
+                    var dCol = 0, dRow = 0
+                    switch direction {
+                    case 0: dCol = -1  // Left
+                    case 1: dCol = 1   // Right
+                    case 2: dRow = 1   // Down
+                    case 3: dRow = -1  // Up
+                    default: break
+                    }
+                    let newAnchorCol = min(max(anchor.col + dCol, 0), maxCol)
+                    let newAnchorRow = min(max(anchor.row + dRow, 0), maxRow)
+                    let newCurCol = min(max(cur.col + dCol, 0), maxCol)
+                    let newCurRow = min(max(cur.row + dRow, 0), maxRow)
+
+                    // Stop if nothing changed (both sides at border)
+                    if newAnchorCol == anchor.col && newAnchorRow == anchor.row &&
+                       newCurCol == cur.col && newCurRow == cur.row { return }
+
+                    state.anchor = GridOffset(col: newAnchorCol, row: newAnchorRow)
+                    state.keyboardCursor = GridOffset(col: newCurCol, row: newCurRow)
+                } else {
+                    // Plain arrow: move cursor only
+                    let cur = state.keyboardCursor ?? GridOffset(col: 0, row: 0)
+                    var newCol = cur.col, newRow = cur.row
+                    switch direction {
+                    case 0: newCol = max(0, cur.col - 1)
+                    case 1: newCol = min(maxCol, cur.col + 1)
+                    case 2: newRow = min(maxRow, cur.row + 1)
+                    case 3: newRow = max(0, cur.row - 1)
+                    default: break
+                    }
+                    state.keyboardCursor = GridOffset(col: newCol, row: newRow)
                 }
-                let newOffset = GridOffset(col: newCol, row: newRow)
-                state.keyboardCursor = newOffset
+
                 // Update preview window
-                let previewAnchor = state.anchor ?? newOffset
-                let previewSel = GridSelection(anchor: previewAnchor, target: newOffset)
+                let cursor = state.keyboardCursor!
+                let previewAnchor = state.anchor ?? cursor
+                let previewSel = GridSelection(anchor: previewAnchor, target: cursor)
                 let area = self.windowManager.selectionToArea(
                     previewSel, gridSize: self.gridSize, monitorIdx: index, preview: true)
                 self.previewWindow.previewArea = area

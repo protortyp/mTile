@@ -5,8 +5,8 @@ import SwiftUI
 final class OverlayWindow: NSPanel {
     /// Called when the user presses Escape.
     var onEscape: (() -> Void)?
-    /// Called when the user presses an arrow key. Direction: 0=left, 1=right, 2=down, 3=up.
-    var onArrowKey: ((Int) -> Void)?
+    /// Called when the user presses an arrow key. Direction: 0=left, 1=right, 2=down, 3=up. Bool: option held.
+    var onArrowKey: ((Int, Bool) -> Void)?
     /// Called when the user presses Enter/Return.
     var onEnter: (() -> Void)?
 
@@ -36,13 +36,14 @@ final class OverlayWindow: NSPanel {
     override var canBecomeMain: Bool { false }
 
     override func keyDown(with event: NSEvent) {
+        let optionHeld = event.modifierFlags.contains(.option)
         switch event.keyCode {
-        case 53: onEscape?()                      // Escape
-        case 123: onArrowKey?(0)                   // Left
-        case 124: onArrowKey?(1)                   // Right
-        case 125: onArrowKey?(2)                   // Down
-        case 126: onArrowKey?(3)                   // Up
-        case 36, 76: onEnter?()                    // Return / Enter
+        case 53: onEscape?()                              // Escape
+        case 123: onArrowKey?(0, optionHeld)               // Left
+        case 124: onArrowKey?(1, optionHeld)               // Right
+        case 125: onArrowKey?(2, optionHeld)               // Down
+        case 126: onArrowKey?(3, optionHeld)               // Up
+        case 36, 76: onEnter?()                            // Return / Enter
         default: super.keyDown(with: event)
         }
     }
